@@ -193,17 +193,46 @@ elif step == "3단계: 서류전형 (AI & 블라인드)":
             st.dataframe(df_res[['지원번호', '인성검사', '인성_결과']])
             if st.button("최종 면접 대상자 확정"): st.session_state.doc_pass_data = df_res[df_res['인성_결과'] == "✅ 통과"]
 # ==========================================
-# 4단계: 면접
+# 4단계: 면접 (버튼 강제 실행 방식)
 # ==========================================
 elif step == "4단계: 면접전형 (최종 선발)":
     st.header("🏆 4단계: 면접전형")
+    
+    TARGET_COUNT = 1 
+    
     if st.session_state.doc_pass_data is not None:
-        int_file = st.file_uploader("면접 점수 CSV 업로드", type=['csv'])
-        if int_file:
-            df_f = pd.merge(st.session_state.doc_pass_data, clean_columns(pd.read_csv(int_file)), on='지원번호')
-            # 5점/10점 가산점 적용
-            df_f['면접가산점'] = df_f['우대사항'].apply(lambda x: calculate_bonus(100, x))
-            df_f['최종점수'] = df_f['실무면접'] + df_f['종합면접'] + df_f['면접가산점']
-            df_f['판정'] = df_f['최종점수'].apply(lambda x: "🏆 합격" if x >= 70 else "🔴 불합격")
-            st.session_state.step4_df = df_f
-        if st.session_state.step4_df is not None: st.dataframe(st.session_state.step4_df[['지원번호', '실무면접', '종합면접', '면접가산점', '최종점수', '판정']])
+        int_file = st.file_uploader("📂 면접 점수 CSV 업로드", type=['csv'])
+        
+        # 버튼을 눌러야만 로직이 작동하게 변경
+        if int_file and st.button("면접 결과 계산하기"):
+            df_int = clean_columns(pd.read_csv(int_file))
+            
+            if '실무면접' in df_int.columns and '종합면접' in df_int.columns:
+                df_f = pd.merge(st.session_state.doc_pass_data, df_int, on='지원번호')
+                
+                # 가산점 및 점수 계산
+                df_f['면접가산점'] = df_f['우대사항'].apply(lambda x: calculate_bonus(100, x))
+                df_f['최종점수'] = df_f['실무면접'] + df_f['종합면접'] + df_f['면접가산점']
+                
+                # 정렬 및 판정
+                df_f = df_f.sort_values(by='최종점수', ascending=False).reset_index(drop=True)
+                
+                def determine_pass(idx, score):
+                    if score < 70: return "🔴 불합격"
+                    if idx < TARGET_COUNT: return "🏆 최종 합격"
+                    elif idx < TARGET_COUNT * 3: return "🥈 예비 합격"
+                    else: return "🔴 불합격"
+
+                df_f['판정'] = [determine_pass(i, row['최종점수']) for i, row in df_f.iterrows()]
+                st.session_state.step4_df = df_f
+                
+                # 결과 출력
+                st.write(f"### [계산 완료] 결과 확인")
+                st.dataframe(df_f[['지원번호', '최종점수', '우대사항', '판정']])
+            else:
+                st.error("🚨 '실무면접', '종합면접' 컬럼이 파일에 없습니다!")
+        
+        # 이미 계산된 결과가 있으면 항상 보여줌
+        elif st.session_state.step4_df is not None:
+            st.dataframe(st.session_state.step4_df[['지원번호', '최종점수', '우대사항', '판정']])
+            
